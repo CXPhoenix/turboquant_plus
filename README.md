@@ -235,10 +235,11 @@ benchmarks/
 
 Detailed debugging logs, gotchas, and benchmarks from the llama.cpp port:
 
-- [Quality Benchmarks](https://github.com/TheTom/llama-cpp-turboquant/blob/feature/turboquant-kv-cache/docs/quality-benchmarks.md) — perplexity validation, bisection log, top-of-tree quality+speed table
-- [Speed Investigation](https://github.com/TheTom/llama-cpp-turboquant/blob/feature/turboquant-kv-cache/docs/turbo-speed-investigation.md) — Metal gotchas, fp16 WHT results, optimization history
-- [Pre-Rotate-Queries Investigation](https://github.com/TheTom/llama-cpp-turboquant/blob/feature/turboquant-kv-cache/docs/pre-rotate-queries-investigation.md) — why WHT and RoPE don't commute (saves you weeks of debugging)
-- [Quality Gate Script](https://github.com/TheTom/llama-cpp-turboquant/blob/feature/turboquant-kv-cache/scripts/turbo-quality-gate.sh) — pre-push perplexity check
+- [Quality Benchmarks](docs/quality-benchmarks.md) — perplexity validation, bisection log, top-of-tree quality+speed table
+- [Speed Investigation](docs/turbo-speed-investigation.md) — Metal gotchas, fp16 WHT results, optimization history
+- [Pre-Rotate-Queries Investigation](docs/pre-rotate-queries-investigation.md) — why WHT and RoPE don't commute (saves you weeks of debugging)
+- [Pre-Rotate-Queries Plan](docs/pre-rotate-queries-plan.md) — original optimization plan and approach
+- [Quality Gate Script](scripts/turbo-quality-gate.sh) — pre-push perplexity check
 
 ## Contributing
 
