@@ -23,21 +23,19 @@ Compresses transformer KV cache **up to 4.9×** using PolarQuant + QJL. Paper cl
 
 | Cache Type | Bits/val | Prompt tok/s | Gen tok/s | KV Compression |
 |------------|----------|-------------|-----------|----------------|
-| q8_0 (baseline) | 8.0 | **225.4** | **85.0** | 2.0× |
-| q4_0 | 4.0 | 221.5 | 84.5 | 4.0× |
-| turbo4 | 4.25 | 7.1 | 2.4 | 3.8× |
-| turbo3 | 3.25 | 4.2 | 2.4 | **4.9×** |
+| q8_0 (baseline) | 8.0 | **222.8** | **85.5** | 2.0× |
+| turbo4 | 4.25 | 62.6 | 10.3 | 3.8× |
+| turbo3 | 3.25 | 67.3 | 10.7 | **4.9×** |
 
 ### Qwopus v2 27B Dense (Q8_0)
 
 | Cache Type | Bits/val | Prompt tok/s | Gen tok/s | KV Compression |
 |------------|----------|-------------|-----------|----------------|
-| q8_0 (baseline) | 8.0 | **91.3** | **17.6** | 2.0× |
-| q4_0 | 4.0 | 90.8 | 17.6 | 4.0× |
-| turbo4 | 4.25 | 5.5 | 1.3 | 3.8× |
-| turbo3 | 3.25 | 5.3 | 1.3 | **4.9×** |
+| q8_0 (baseline) | 8.0 | **83.1** | **17.6** | 2.0× |
+| turbo4 | 4.25 | 24.3 | 5.2 | 3.8× |
+| turbo3 | 3.25 | 29.8 | 5.3 | **4.9×** |
 
-> **Speed note**: The 13-35× speed regression is from the unoptimized Metal shader — the dequantize kernel performs a full 128×128 rotation per chunk instead of once per block. Optimization is actively being worked on ([#23](https://github.com/TheTom/turboquant_plus/issues/23)). Compression target is met. Quality metrics (perplexity, NIAH) coming next.
+> **Speed**: turbo3 is ~3-8× slower than q8_0 on generation (model-dependent). The Fast Walsh-Hadamard rotation adds O(d log d) compute per KV block. Optimization ongoing ([#23](https://github.com/TheTom/turboquant_plus/issues/23)). The dense 27B model at 5.3 tok/s with 4.9× compression is approaching practical use for long-context scenarios where memory is the bottleneck.
 
 ### Compression Quality (Python Prototype)
 
