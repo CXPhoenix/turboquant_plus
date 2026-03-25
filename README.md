@@ -99,31 +99,34 @@ python3 benchmarks/validate_real_model.py
 The llama.cpp port adds two new KV cache types: `turbo3` (3.25 bits, 4.9× compression) and `turbo4` (4.25 bits, 3.8× compression).
 
 ```bash
-# Clone the fork with TurboQuant support
-git clone https://github.com/TheTom/turboquant_plus.git
-cd turboquant_plus
-
-# The llama.cpp patch is on the feature branch
-# Apply it to your llama.cpp checkout — files modified:
-#   ggml/include/ggml.h          — new type enum entries
-#   ggml/src/ggml-common.h       — block structures
-#   ggml/src/ggml-quants.h       — function declarations
-#   ggml/src/ggml-turbo-quant.c  — C quantize/dequantize
-#   ggml/src/ggml.c              — type traits registration
-#   ggml/src/CMakeLists.txt       — build config
-#   ggml/src/ggml-metal/ggml-metal.metal  — Metal GPU kernels
-#   ggml/src/ggml-metal/ggml-metal-device.m — Metal validation
-#   common/arg.cpp               — CLI arg parsing
+# Clone the llama.cpp fork with TurboQuant support
+git clone https://github.com/TheTom/llama-cpp-turboquant.git
+cd llama-cpp-turboquant
+git checkout feature/turboquant-kv-cache
 
 # Build with Metal (Apple Silicon)
-cd /path/to/your/llama.cpp
 cmake -B build -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
+
+# Build with CUDA (NVIDIA) — not yet tested
+# cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release
+# cmake --build build -j
 
 # Verify turbo types are available
 ./build/bin/llama-server --help | grep turbo
 # Expected output includes: turbo3, turbo4
 ```
+
+The fork modifies these files from upstream llama.cpp:
+- `ggml/include/ggml.h` — new type enum entries
+- `ggml/src/ggml-common.h` — block structures
+- `ggml/src/ggml-quants.h` — function declarations
+- `ggml/src/ggml-turbo-quant.c` — C quantize/dequantize *(new file)*
+- `ggml/src/ggml.c` — type traits registration
+- `ggml/src/CMakeLists.txt` — build config
+- `ggml/src/ggml-metal/ggml-metal.metal` — Metal GPU kernels
+- `ggml/src/ggml-metal/ggml-metal-device.m` — Metal device validation
+- `common/arg.cpp` — CLI arg parsing
 
 ### Run Inference with TurboQuant KV Cache
 
