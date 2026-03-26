@@ -34,21 +34,29 @@ TurboQuant v1 is complete: 4.6x KV cache compression at 99% of q8_0 speed across
 
 #### Temporal Decay
 **Branch:** `experiment/temporal-decay`
-**Status:** Design complete, implementation pending.
-**Idea:** Progressive requantization based on token age: recent tokens at 3.5-bit, old tokens at 2.5-bit or lower.
+**Status:** IMPLEMENTED AND VALIDATED. Zero decode overhead. NIAH preserved. GitHub issue #38.
 
-**Key design decisions (from research):**
-- Best trigger: `llama_kv_cache::update()` — runs between batches, exclusive cache access
-- Token age tracking: already exists in `llama_kv_cells` (pos per cell)
-- MVP: 2 tiers (turbo3 → turbo2), check every 256 tokens
-- Blocker: turbo2 block type doesn't exist yet
+Proper 3→2 requantization for old tokens (not the broken zero-signs approach — Codex caught that).
+- Trigger: `init_update()` every 64 decode steps (amortized, invisible to user)
+- Method: dequant turbo3 → nearest 2-bit centroid → map to 3-bit → repack with norm correction
+- Batch limit: 64 cells/cycle (eliminates CPU↔GPU transfer overhead)
+- Layer-aware: layers 0 to n_layer-8 decay, last 8 preserved
+- Attention sinks (pos 0-3) always exempt
 
-**Updated with layer-adaptive findings:** Temporal decay should be layer-aware. Early layers (insensitive) decay faster. Late layers (sensitive) decay slower or not at all. Combined with layer-adaptive mode 2, this means:
-- Recent tokens: turbo3 everywhere (current behavior)
-- Old tokens in layers 0-31: turbo2 (aggressive compression)
-- Old tokens in layers 32-39: stay at turbo3 or q8_0 (preserve quality)
+**Results (38K-token PDF, Qwen3.5-35B-A3B, M5 Max):**
 
-**Estimated impact:** 30-50% memory reduction for long-context workloads beyond what turbo3 already provides.
+| Metric | No Decay | Decay (64/cycle) |
+|--------|----------|-----------------|
+| Prefill | 1064 tok/s | 1071 tok/s |
+| Decode | 42.6 tok/s | 43.0 tok/s (±0%) |
+| NIAH | 7/9 (78%) | 7/9 (78%) — same misses |
+
+**Memory savings:** 30-34% at 32K-256K context.
+**Quality:** Python prototype cos=0.940 synthetic, cos=0.949 real Qwen3-1.7B.
+
+**Key finding:** Unbatched decay was -54% decode speed (CPU tensor transfers block GPU). Batching at 64 cells/cycle eliminates the overhead entirely.
+
+**Next:** GPU-side Metal compute kernel (no CPU↔GPU transfers), multi-tier decay (turbo3→turbo2→1-bit).
 
 ### BLOCKED (needs engineering work)
 
@@ -100,9 +108,39 @@ Codex independently reached the same conclusion: "Expert routing is an FFN signa
 
 6. **Always run perplexity.** "Coherent text" evaluation caught nothing when PPL was 165. Speed numbers are meaningless without quality validation.
 
+## Key Learnings (added 2026-03-26)
+
+7. **Register LUT spills on Metal but not CUDA.** float cn[8] works on CUDA (255 regs/thread) but spills to device memory on Metal. Constant half[8] + float norm broadcast is optimal for Apple Silicon. Fundamental architecture difference.
+
+8. **Outlier channeling doesn't work.** Even removing 32/128 channels (25%), kurtosis stays 8-50. WHT rotation gets it to 2.9. Heavy tails are structural to attention, not concentrated in outlier channels. WUSH paper confirmed.
+
+9. **Temporal decay must be batched.** Unbatched CPU→GPU tensor transfers for 34K cells = -54% decode. Batching at 64 cells/cycle eliminates overhead entirely.
+
+10. **Norm correction is free quality.** Store `norm / ||centroid_vector||` instead of raw norm. PPL +1.6% → +1.1% at zero cost. Ported from @spiritbuun's CUDA implementation.
+
 ## Recommended Next Steps (Priority Order)
 
 1. ~~**Test layer-adaptive at extended contexts**~~ — ✅ DONE. Mode 2 holds 2K-32K, +0.14-0.37% PPL.
-2. **Implement turbo2 for temporal decay** — 2-bit block type, the blocker for temporal decay MVP
-3. **Rotation-free kurtosis test** — one measurement to determine if Idea E is viable
-4. **Upstream PR preparation** — llama.cpp CONTRIBUTING.md requires perplexity, KL divergence, and CPU perf baselines
+2. ~~**Rotation-free kurtosis test**~~ — ✅ DEAD. Kurtosis stays 8-50 even removing 32/128 channels.
+3. ~~**Temporal decay MVP**~~ — ✅ IMPLEMENTED. Zero overhead, NIAH preserved, 30-34% savings. GitHub #38.
+4. **Fused Q·centroid decode** — eliminate constant memory from FA inner loop. GitHub #39.
+5. **Upstream PR preparation** — llama.cpp CONTRIBUTING.md requires perplexity, KL divergence, and CPU perf baselines
+
+## Overall TurboQuant+ Status (2026-03-26)
+
+**What ships today:**
+- 4.6x KV cache compression at 99% prefill speed
+- PPL +1.1% vs q8_0 (with norm correction)
+- NIAH retrieval: 80% single needle, 100% multi-key distractors through 32K
+- Layer-adaptive mode 2: q8_0 quality at 3.5x effective compression
+- Temporal decay: 30-34% additional memory savings at zero decode cost
+- Diagnostic tool: 2385 lines, 253 tests, 100% coverage, cross-platform
+- NIAH benchmark: Kamradt + RULER methodology, industry-standard
+- 511 total tests across all modules
+
+**What doesn't work (yet):**
+- M1 decode speed (0.39x at 32K — constant cache thrashing, needs fused centroid fix)
+- Prefill dequant-then-attend on Metal (blocked on turbo3→f16 cast)
+- Register LUT on Metal (register spill — CUDA-only optimization)
+- Rotation-free outlier channeling (dead — kurtosis doesn't drop)
+- CUDA port (use @spiritbuun's fork for now)
