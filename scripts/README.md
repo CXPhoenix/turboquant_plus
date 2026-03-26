@@ -32,6 +32,8 @@ That's it. The launcher automatically:
 | **NVIDIA (CUDA)** | [spiritbuun/llama-cpp-turboquant-cuda](https://github.com/spiritbuun/llama-cpp-turboquant-cuda) | `feature/turboquant-kv-cache` |
 | **AMD (ROCm)** | spiritbuun's fork (has RDNA `v_dot2` path) | `feature/turboquant-kv-cache` |
 
+> **AMD users:** ROCm support is untested and experimental. Flash attention is reportedly broken on RDNA 2 (6800 XT) with ROCm > 7.0.1, and turbo3 requires flash attention. RDNA 3/4 may work but nobody has confirmed yet. Expect rough edges and please report what you find.
+
 ```bash
 # Apple Silicon
 git clone https://github.com/TheTom/llama-cpp-turboquant.git
