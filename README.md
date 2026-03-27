@@ -18,7 +18,7 @@ Compresses transformer KV cache **4.6x** using PolarQuant + Walsh-Hadamard rotat
 - **4-mag LUT**: auto-detected on M1/M2/M3/M4, +38-45% decode at long context
 - **Layer-adaptive mode 2**: q8_0 quality at 3.5x compression (last 8 layers at q8_0)
 - **Temporal decay**: 30-34% memory savings at long context (experiment branch)
-- **NIAH retrieval**: 80-100% through 32K, comparable to q8_0
+- **NIAH retrieval**: 9/9 (100%) single needle with sparse V, beating q8_0 (7/9). 100% multi-key through 32K
 - **14 decode approaches tested** on M2 Pro — comprehensive hardware analysis
 - Community: 10+ testers across M1/M2/M5 Mac, RTX 3090/4090/5090, AMD 6800 XT/9070
 - Rotation Gaussianization validated on real Qwen3 KV tensors (kurtosis 900 → 2.9)
@@ -92,18 +92,22 @@ On M2/M1 (pre-M5), the auto-detected 4-mag LUT gives an additional +38-45% decod
 
 Tested using [Kamradt](https://github.com/gkamradt/LLMTest_NeedleInAHaystack) and [NVIDIA RULER](https://github.com/NVIDIA/RULER) methodology. Qwen3.5-35B-A3B on M5 Max 128GB.
 
-**Aggregate: turbo3 87.5% vs q8_0 93.8%.** No cliff at long context. N=10 needles remarkably stable (9-10/10 at every depth).
+**Single Needle Retrieval (with sparse V dequant):**
 
-**Single Needle — Depth (0-100%) x Context Length:**
+| Test | q8_0 | turbo3 | turbo3 + sparse V |
+|------|------|--------|-------------------|
+| Single needle (9 positions) | 7/9 | 7/9 | **9/9 (100%)** |
+
+**turbo3 + sparse V achieves perfect retrieval, beating q8_0.** Needle positions always have meaningful attention weights (well above the 1e-6 threshold) and are never skipped. The improvement likely stems from reduced numerical noise — accumulating fewer negligible V contributions produces a cleaner output signal.
+
+**Single Needle — Depth (0-100%) x Context Length (pre-sparse-V):**
 
 | Depth | 4K | 8K | 16K | 32K |
 |-------|----|----|-----|-----|
 | q8_0 | 5/5 | 4/5 | 4/5 | 4/5 |
 | turbo3 | 5/5 | 4/5 | 5/5 | 3/5 |
 
-**q8_0: 85% (17/20). turbo3: 80% (16/20).** No systematic degradation from compression.
-
-**V2 Kamradt Heatmap:** turbo3 80% vs q8_0 85% — delta is noise.
+**Pre-sparse-V aggregate: q8_0 85% (17/20), turbo3 80% (16/20).** No systematic degradation from compression. N=10 needles remarkably stable (9-10/10 at every depth).
 
 **Multi-Key with 3 Distractors (RULER MK-NIAH):**
 
@@ -112,7 +116,7 @@ Tested using [Kamradt](https://github.com/gkamradt/LLMTest_NeedleInAHaystack) an
 | q8_0 | 1/1 | 1/1 | 1/1 | 1/1 |
 | turbo3 | 1/1 | 1/1 | 1/1 | 1/1 |
 
-**100% retrieval accuracy with distractors through 32K.** turbo3 correctly ignores distractor needles at all context depths. Way better than MLX quantized inference (17-45% at 128K per @jtdavies).
+**100% retrieval accuracy with distractors through 32K.** turbo3 correctly ignores distractor needles at all context depths.
 
 ### Key Validation
 
