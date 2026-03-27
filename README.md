@@ -8,12 +8,19 @@ Compresses transformer KV cache **4.6x** using PolarQuant + Walsh-Hadamard rotat
 
 **Working end-to-end on Apple Silicon** — Qwen 3.5 35B-A3B MoE with 3-bit TurboQuant KV cache on M5 Max via llama.cpp Metal. **Faster than q8_0 at 4.6x compression.**
 
-## Status: v1 Complete, Speed Optimized
+## Status: v1 Complete, Speed Optimized, Community-Tested
 
-- 511 Python tests, 100% code coverage on diagnostics
+- 511+ Python tests, 100% code coverage on diagnostics
 - C port integrated into llama.cpp with Metal GPU kernels
 - `--cache-type-k turbo3 --cache-type-v turbo3` works on Apple Silicon
 - **q8_0 speed parity achieved** (2747 vs 2694 tok/s prefill)
+- **Norm correction**: PPL beats q8_0 on CUDA (-1.17%), +1.1% on Metal (ported from @spiritbuun)
+- **4-mag LUT**: auto-detected on M1/M2/M3/M4, +38-45% decode at long context
+- **Layer-adaptive mode 2**: q8_0 quality at 3.5x compression (last 8 layers at q8_0)
+- **Temporal decay**: 30-34% memory savings at long context (experiment branch)
+- **NIAH retrieval**: 80-100% through 32K, comparable to q8_0
+- **14 decode approaches tested** on M2 Pro — comprehensive hardware analysis
+- Community: 10+ testers across M1/M2/M5 Mac, RTX 3090/4090/5090, AMD 6800 XT/9070
 - Rotation Gaussianization validated on real Qwen3 KV tensors (kurtosis 900 → 2.9)
 
 ---
@@ -51,7 +58,7 @@ Compresses transformer KV cache **4.6x** using PolarQuant + Walsh-Hadamard rotat
 | 8K | 68.3 | 77.7 | 0.88x |
 | 48K (70-page PDF) | 39.9 | 55.6 | 0.72x |
 
-Decode is 88-92% of q8_0 at typical context. At very long context (48K+) it's 72% due to per-position dequant cost. See [Context Scaling Deep Dive](docs/context-scaling-deep-dive.md) and [Decode Speed Investigation](docs/experiment-decode-speed.md).
+Decode is 88-92% of q8_0 at typical context on M5 Max. At very long context (48K+) it's 72% due to per-position dequant cost. On M2/M1 (pre-M5), the auto-detected 4-mag LUT gives +38-45% decode improvement at long context. See [Decode Speed Hardware Analysis](docs/decode-speed-hardware-analysis.md) for the full 14-approach experiment log, and [Context Scaling Deep Dive](docs/context-scaling-deep-dive.md) for the M5 Max optimization journey.
 
 ### Speed Optimization Journey
 
