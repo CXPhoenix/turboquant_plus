@@ -276,6 +276,22 @@ The two optimizations stack as predicted. 4-mag reduces K dequant cost (fewer co
 
 Raw logs: [`threshold-ablation-logs/m2_pro_4mag_sparse_v.txt`](../threshold-ablation-logs/m2_pro_4mag_sparse_v.txt).
 
+### 7.3 Dense Model Validation
+
+Sparse V was evaluated on a dense 27B model (Qwen3.5-27B Q8\_0) to check for regressions outside MoE workloads.
+
+| Test | With sparse V | Without | Delta |
+|------|-------------|---------|-------|
+| Short decode (tg128) | 16.73 tok/s | 16.61 tok/s | +0.7% |
+| pp8192+tg128 | 298.27 tok/s | 294.52 tok/s | +1.3% |
+| pp16384+tg128 | 316.98 tok/s | 311.24 tok/s | +1.8% |
+
+No regressions were observed. Gains are smaller than MoE models, where attention is a larger fraction of decode time, but remain neutral-to-positive. The trend improves slightly with context length.
+
+This suggests sparse V is safe to enable by default even for dense models. On dense architectures, FFN dominates decode compute (all parameters are active every token), so attention — and therefore V dequant — is a small fraction of total cost. Sparse V neither helps nor hurts meaningfully, but does not regress.
+
+Raw logs: [`threshold-ablation-logs/dense_27b_sparse_v_clean_m5.txt`](../threshold-ablation-logs/dense_27b_sparse_v_clean_m5.txt).
+
 ---
 
 ## 8. Limitations and Future Work

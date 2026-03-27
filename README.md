@@ -50,7 +50,7 @@ Compresses transformer KV cache **4.6x** using PolarQuant + Walsh-Hadamard rotat
 
 **Prefill: flat 99% of q8_0 speed regardless of context length.**
 
-### Decode Speed (M5 Max 128GB, Sparse V Dequant)
+### Decode Speed — MoE (M5 Max 128GB, Qwen3.5-35B-A3B, Sparse V)
 
 | Context | turbo3 decode | q8_0 decode | turbo3/q8_0 |
 |---------|-------------|-----------|-------------|
@@ -60,6 +60,16 @@ Compresses transformer KV cache **4.6x** using PolarQuant + Walsh-Hadamard rotat
 | 16K | 66.5 | 72.0 | 0.92x |
 | 24K (70-page PDF) | 53.3 | 68.2 | 0.78x |
 | 32K | 57.7 | 62.0 | **0.93x** |
+
+### Decode Speed — Dense (M5 Max 128GB, Qwen3.5-27B, Sparse V)
+
+| Test | With sparse V | Without | Delta |
+|------|-------------|---------|-------|
+| Short (tg128) | 16.73 | 16.61 | +0.7% |
+| 8K (pp8192+tg128) | 298.27 | 294.52 | +1.3% |
+| 16K (pp16384+tg128) | 316.98 | 311.24 | +1.8% |
+
+Dense models see smaller gains (attention is <5% of decode — FFN dominates). No regressions. Safe to enable by default.
 
 **Sparse V dequant** skips V dequantization for positions where softmax attention weight < 1e-6. At long context, 90%+ of attention weights are negligible — this saves ~half the total dequant cost. **+22.8% decode at 32K** vs previous turbo3, pushing the ratio from 0.76x to 0.93x. Zero quality loss (PPL 6.176 vs 6.211 without sparse V). Benefit scales with context length — the longer the context, the bigger the win. This is a 3-line kernel change.
 
