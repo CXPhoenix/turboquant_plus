@@ -3,11 +3,19 @@
 TurboQuant quick bench across multiple model families, architectures, and sizes.
 Hardware: Apple M5 Max 128GB. All tests with sparse V enabled.
 
-## Why Cross-Model Testing Matters
+## The ISWA Bug — Cross-Model Testing Catches What Single-Model Testing Misses
 
-This testing methodology caught a critical ISWA bug that single-model testing on Qwen would never have found. Gemma 2 (which uses interleaved sliding window attention) had PPL 13.7 trillion — complete garbage output at normal inference speed. The bug was a missing WHT rotation in one of five `build_attn` overloads in `llama-graph.cpp`. Without testing diverse model architectures, this would have shipped broken to every ISWA model user (Gemma 2, Cohere2, OLMo2, Gemma3N).
+After turbo4 was working on Qwen, we built `turbo-quick-bench.sh` — a rapid smoke test (~5 min per model) that runs PPL, decode speed, and NIAH across q8_0/turbo3/turbo4. Then we downloaded 7 models from 5 families and ran the bench on each.
 
-**Lesson:** Always test across model families, not just the model you developed on.
+Gemma 2 27B showed PPL 13.7 trillion. Everything else passed.
+
+Initial investigation went down the wrong path — we assumed head_dim=256 (Gemma's n_embd/n_head = 4608/32 = 144). But parsing GGUF metadata directly showed K/V heads are explicitly 128. q4_0 worked fine on Gemma. Disabling flash attention didn't help (same PPL). The issue was turbo-specific but not head_dim-specific.
+
+The root cause was found by reading all 5 overloads of `build_attn` in `llama-graph.cpp`. The regular `build_attn` (used by Qwen, Llama, Phi, Mistral) includes turbo WHT Q rotation and V inverse rotation. The ISWA overload (used by Gemma 2, Cohere2, OLMo2, Gemma3N) didn't. K/V were WHT-rotated in SET_ROWS but Q was unrotated. Attention computed `rotated_K × unrotated_Q` — complete garbage, 13.7 trillion PPL garbage.
+
+16 lines fixed it. PPL 13.7 trillion → 3.80.
+
+**Key lesson:** This bug would never have been found by testing on Qwen alone. The cross-model smoke testing methodology — downloading diverse models and running a quick bench on each — is what caught it. ISWA models were silently broken, producing normal-looking inference speed but nonsensical output. Always test across model families, not just the model you developed on.
 
 ## Test Matrix
 
