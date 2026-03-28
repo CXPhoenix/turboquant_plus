@@ -61,8 +61,8 @@ turbo4 (4-bit PolarQuant) has the best quality after q8_0 — closer to q8_0 tha
 
 ### Decode Speed — MoE (M5 Max 128GB, Qwen3.5-35B-A3B, Sparse V)
 
-| Config | Short decode (tg128) | pp32768+tg128 | Short vs q8_0 |
-|--------|---------------------|---------------|--------------|
+| Config | Short (tg128) | pp32768+tg128 | Short vs q8_0 |
+|--------|--------------|---------------|--------------|
 | q8_0 | 85.71 tok/s | 1173.91 tok/s | — |
 | **turbo4** | **79.87 tok/s** | **1060.12 tok/s** | **0.93x** |
 | turbo3 | 76.84 tok/s | 1141.74 tok/s | 0.90x |
