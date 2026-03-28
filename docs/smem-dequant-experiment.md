@@ -106,14 +106,47 @@ TURBO_SMEM_DEQUANT=1 ./build/bin/llama-bench -m ~/dev/turbo_test/models/Qwen2.5-
 
 ## What Would Actually Work (Hypotheses)
 
-The remaining viable approaches from the analysis doc:
+### 1. Device-memory centroid×norm table (MOST PROMISING)
 
-1. **Block format change**: Embed precomputed `centroid×norm` values alongside block data in device memory. Reads become sequential (non-divergent) instead of divergent constant memory. Changes the on-disk format.
+**Idea**: Add 8 pre-computed `centroid[i] × norm` values (fp16) per 128-element rotation group, stored alongside the block data in device memory.
 
-2. **Fused Q·centroid attention**: Precompute a Q·centroid table (8 or 4 values per block), then each K element is a table index — replacing per-element constant reads with per-block precomputation. Requires custom FA kernel.
+**Current dequant**: `index → constant_LUT[index] × norm` (divergent constant read + ALU)
+**Proposed dequant**: `index → device_table[group_offset + index]` (sequential device read)
 
-3. **Different quantization scheme**: A format designed from scratch for Metal's constant memory constraints (e.g., using lookup-free encoding like bit shifts instead of centroid tables).
+**Cost**: 16 extra bytes per 128 elements (8 centroids × fp16). Block size goes from 56 bytes → 72 bytes per 128 elements. Bits/value: 3.5 → 4.5 (still 1.78× compression vs q8_0).
+
+**Why it should work**: Device memory reads are what the GPU is optimized for. The 16-byte table is contiguous and fits in a single cache line. Eliminates ALL constant memory from dequant. The sign can be applied via ALU (1 multiply), which the GPU pipelines efficiently.
+
+**Format change required**: Yes — on-disk block format changes. Needs quantize-side update + all dequant paths. Breaking change to existing turbo3 GGUF files.
+
+### 2. Sparse K attention (K-side SPARSE_V equivalent)
+
+**Idea**: For K dot products, skip positions with zero or near-zero attention contribution. Currently SPARSE_V skips V dequant for negligible weights, but K dequant always runs for all C positions.
+
+**Challenge**: K scores aren't known until after Q*K^T — you need the K dequant to compute the score. Would need a cheap approximation (e.g., using just the norm to estimate whether a position's score will be significant).
+
+### 3. Fused Q·centroid precompute
+
+**Idea**: Before the K loop, precompute Q·centroid for all 8 (or 4) centroids: `q_dot_c[i] = dot(Q_chunk, centroid[i])`. Then each K element contributes `q_dot_c[index] × norm × sign` — a per-element table index into a LOCAL (register) table of 4-8 values.
+
+**Why it might work**: The q_dot_c table is tiny (4-8 floats), computed ONCE per Q chunk, and reused across all C cache positions. The per-element dequant becomes: read 3-bit index → index into register table → multiply by norm and sign. Zero constant memory reads in the inner loop.
+
+**Challenge**: The Q chunk varies across threads (each handles different K dimensions). Need per-thread precomputation. With DK4/NL=1 (128 heads), only 4 Q elements per thread — so 4 or 8 q_dot_c values fit in registers.
+
+## Also Implemented: Q·Centroid Precompute (#16)
+
+Branch: same (`experiment/smem-pre-dequant`)
+Env var: `TURBO_QC_PRECOMPUTE=1`
+
+Precomputes `mag[c] * Q[j]` for c=0..3, j=0..3 (4 float4 named variables, NOT arrays to avoid register spill). Done ONCE before the cache position loop. Inner loop uses `select()` (2-level, 2 selects per element) to index into the precomputed values.
+
+**Constant reads**: 4 total (vs 4 × C = 128 in baseline). O(1) vs O(C).
+**Branches**: 8 selects per float4 (2 per element × 4 elements). On Apple8, likely worse than 4 constant reads.
+
+**Prediction**: Likely -10-30% on M2 due to select→branch overhead. But trades constant cache pressure for ALU/branch pressure, which may help at very long context where the constant cache is fully thrashed.
+
+TODO: Test after 7pm CST (DINOv2 training running 6-7pm).
 
 ## Approach Count
 
-This is approach **#15** in the M2 decode speed experiments. The 4-mag LUT at 15.1 tok/s (62% of ceiling) remains the best result.
+This is approach **#15** (SMEM) and **#16** (QC precompute) in the M2 decode speed experiments. The 4-mag LUT at 15.1 tok/s (62% of ceiling) remains the best result.
