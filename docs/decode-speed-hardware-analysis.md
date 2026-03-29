@@ -382,9 +382,41 @@ Staging device memory reads (norm, qs, signs) into registers before constant rea
 | 22 | Async prefetch | -2% | ~61% | Forced read ordering |
 | — | Ceiling (no dequant) | 24.5 | 100% | Zero overhead |
 
+## SMEM Pre-Dequant Re-Run (2026-03-28 night, corrected)
+
+The original -51% SMEM result was measured during DINOv2 GPU contention. Clean re-run shows it's actually a small positive:
+
+### Qwen2.5-1.5B Q4_K_M (8K context)
+
+| Config | SMEM t/s | Baseline t/s | Delta |
+|--------|---------|-------------|-------|
+| turbo3 short | 53.96 | 51.84 | **+4.1%** |
+| turbo3 8K | 54.13 | 51.84 | **+4.4%** |
+| turbo4 short | 60.20 | 58.74 | **+2.5%** |
+| turbo4 8K | 60.37 | 58.74 | **+2.8%** |
+
+### Qwen2.5-7B Q4_K_M (8K context)
+
+| Config | SMEM t/s | Baseline t/s | Delta |
+|--------|---------|-------------|-------|
+| turbo3 8K | 26.17 | 25.88 | +1.1% |
+| turbo4 8K | 26.31 | 27.59 | **-4.6%** |
+
+### Analysis: SMEM helps small models, hurts large turbo4
+
+The pattern is clear: SMEM pre-dequant trades constant memory pressure for threadgroup memory + barriers. This helps when:
+- **Model is small** (attention is larger fraction of decode → dequant matters more)
+- **KV format is turbo3** (8 centroids = more constant reads per element to avoid)
+
+It hurts when:
+- **Model is large** (register pressure from SMEM allocation → spills)
+- **KV format is turbo4 on 7B** (16 centroids = larger pre-dequant tile → more SMEM overhead)
+
+This suggests a **model-size-adaptive dispatch**: use SMEM pre-dequant for small models (≤3B), 4-mag LUT for large models (≥7B). The crossover is somewhere in between.
+
 ## Final Conclusion: M2 Decode Ceiling (2026-03-28)
 
-**20 approaches tested. The 4-mag LUT is the definitive M2 decode ceiling.**
+**20 approaches tested + 1 corrected re-run. The 4-mag LUT is the M2 ceiling for large models. SMEM pre-dequant adds ~2-4% for small models.**
 
 The bottleneck is NOT:
 - Constant memory LUT divergence (proven by #20: zero LUT = same speed)
@@ -396,6 +428,7 @@ The bottleneck IS:
 - **Device memory bandwidth** for streaming quantized KV blocks from DRAM
 - **Dequant ALU complexity** (WHT extraction + centroid + norm vs q8_0's simple `int8 * scale`)
 - These two costs are inherent to the turbo format and cannot be optimized away without changing the format itself
+- For small models where attention dominates, SMEM can squeeze out ~4% by trading constant reads for threadgroup reads
 
 ### Remaining untested approaches (low priority)
 
