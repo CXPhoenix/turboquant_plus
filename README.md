@@ -134,6 +134,34 @@ Sparse V is not TurboQuant-specific: on q8_0 KV cache it yields a +5% decode spe
 
 On M2/M1 (pre-M5), the auto-detected 4-mag LUT gives an additional +38-45% decode improvement at long context, and is additive with sparse V. See [Decode Speed Hardware Analysis](docs/decode-speed-hardware-analysis.md) for the full 14-approach experiment log, and [Context Scaling Deep Dive](docs/context-scaling-deep-dive.md) for the M5 Max optimization journey.
 
+### Community Hardware: CUDA (RTX 3090)
+
+Tested by @jaker86 on RTX 3090. Model: Qwen3.5-9B Q4_K_M. Build from [signalnine's CUDA fork](https://github.com/signalnine/llama-cpp-turboquant-cuda) PR #24.
+
+| Config | K | V | PPL (wikitext-2) | vs q8_0 | Decode t/s | Prefill t/s |
+|--------|---|---|-----------------|---------|-----------|------------|
+| q8_0 | q8_0 | q8_0 | 8.2018 | — | 102.69 | 3774 |
+| turbo3 | turbo3 | turbo3 | 8.3124 | +1.3% | 98.68 | 3707 |
+| turbo4 | turbo4 | turbo4 | 8.3012 | +1.2% | 95.87 | 3628 |
+| turbo2 | turbo2 | turbo2 | 8.6639 | +5.6% | 98.05 | 3680 |
+| mixed | turbo3 | turbo2 | 8.5312 | +4.0% | 97.32 | 3524 |
+| mixed | turbo2 | turbo3 | 8.4356 | +2.9% | 96.61 | 3608 |
+
+CUDA decode within 4-7% of q8_0 across all configs. Prefill within 4-7%. Mixed K/V configs working correctly after PR #24 fix (prefill was 329 t/s before fix, now 3500+).
+
+### Community Hardware: M1 Max 64GB
+
+Tested by @mariotomich. Model: Qwen3.5-35B-A3B Q8_0, Sparse V ON. Real prompt: 38,596 tokens (70-pages.md), llama-cli with Qwen chat template.
+
+| KV | Prefill t/s | Decode t/s | vs q8_0 |
+|----|------------|-----------|---------|
+| q8_0 | 399.0 | 12.4 | — |
+| turbo2 | 406.2 | 10.8 | -12.9% |
+| turbo3 | 370.4 | 7.7 | -37.9% |
+| **turbo4** | **365.0** | **16.6** | **+33.9%** |
+
+**turbo4 decode beats q8_0 by +33.9% at long context on M1 Max.** At 38K tokens, KV bandwidth savings outweigh dequant cost. Sparse V amplifies the gain. turbo3 decode regression (-37.9%) is the known M1 L2 cache wall — turbo3 dequant complexity causes cache eviction on pre-M5 hardware.
+
 ### Speed Optimization Journey
 
 | Optimization | Prefill tok/s | vs q8_0 |
@@ -261,7 +289,8 @@ git checkout feature/turboquant-kv-cache
 cmake -B build -DGGML_METAL=ON -DGGML_METAL_EMBED_LIBRARY=ON -DCMAKE_BUILD_TYPE=Release
 cmake --build build -j
 
-# Build with CUDA (NVIDIA) — not yet tested
+# Build with CUDA (NVIDIA) — community tested on RTX 3090/4090/5090
+# Use signalnine's CUDA fork: https://github.com/signalnine/llama-cpp-turboquant-cuda
 # cmake -B build -DGGML_CUDA=ON -DCMAKE_BUILD_TYPE=Release
 # cmake --build build -j
 
