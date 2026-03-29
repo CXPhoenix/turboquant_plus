@@ -503,6 +503,16 @@ Phase 2 attacks at a higher level: different kernel shapes, different data layou
 
 **Risk:** High effort, uncertain payoff. The template overhead might not be the bottleneck.
 
+**Result: NEGATIVE.** Metal shader compiler already fully specializes templates — function pointers resolved, dimensions constant-folded, dead code eliminated. No runtime overhead to remove.
+
+| Model | Baseline t/s | Specialized t/s | Delta |
+|-------|-------------|----------------|-------|
+| 1.5B short | 53.34 | 52.77 | -1.1% |
+| 1.5B 8K | 51.73 | 51.44 | -0.6% |
+| 7B 8K | 25.89 | 25.83 | -0.2% (noise) |
+
+The slight regression is likely from increased instruction footprint — duplicated inline dequant in K and V loops vs the compiler sharing code between template-generated paths. **The generic template IS the optimized kernel.**
+
 ---
 
 ### Experiment #24: Apple7/8-Specific Alternate Block Format
