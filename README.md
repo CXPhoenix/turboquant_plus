@@ -4,7 +4,7 @@ Implementation of [TurboQuant](https://research.google/blog/turboquant-redefinin
 
 > **Why "Plus"?** The base TurboQuant paper is v1. I have ideas for improvements coming post-v1 — adaptive bit allocation, temporal decay compression, expert-aware MoE compression, and more. The "plus" is what comes next.
 
-Compresses transformer KV cache **4.6–6.4x** using PolarQuant + Walsh-Hadamard rotation. Near q8_0 prefill speed and ~0.9x decode throughput at long context (Apple Silicon). Full format family: turbo2 (2-bit, 6.4x), turbo3 (3-bit, 4.6x), turbo4 (4-bit, 3.8x).
+Compresses transformer KV cache **3.8–6.4x** using PolarQuant + Walsh-Hadamard rotation. Near q8_0 prefill speed and ~0.9x decode throughput at long context (Apple Silicon). Full format family: turbo2 (2-bit, 6.4x), turbo3 (3-bit, 4.6–5.1x), turbo4 (4-bit, 3.8x). turbo3 compression depends on storage block size; see [block size study](docs/papers/block-size-experiment.md).
 
 **Key contribution:** Attention-gated KV cache decoding ("Sparse V") that skips low-weight V positions during inference. up to +22.8% decode speed at 32K context, validated on wikitext-103 (50 chunks, CI ±0.021) with no measurable PPL change. Sparse V uses attention weights as a gating signal for computation, skipping work that contributes negligibly to the output.
 
@@ -44,10 +44,12 @@ Validated end-to-end on Qwen 3.5 35B-A3B (MoE) on M5 Max via llama.cpp Metal.
 | q8_0 | 8.5 | 1.9x | 6.111 | baseline |
 | **turbo4** | **4.25** | **3.8x** | **6.125** | **+0.23%** |
 | q4_0 | 4.5 | 3.6x | 6.142 | +0.52% |
-| turbo3 | 3.5 | 4.6x | 6.176 | +1.06% |
+| turbo3 | 3.5† | 4.6x† | 6.176 | +1.06% |
 | turbo2 | 2.5 | 6.4x | 6.507 | +6.48% |
 
 turbo4 (4-bit PolarQuant) has the best quality after q8_0 — closer to q8_0 than q4_0, at better compression. turbo3 trades quality for maximum compression. turbo2 (2-bit) trades more quality for extreme compression — best used asymmetrically.
+
+> †turbo3 at default block_size=32. At block_size=128, turbo3 achieves 3.125 bits/val and 5.12x compression with identical PPL, validated on Metal across 3 model architectures, 3 context lengths (512–32K), and 2 Apple Silicon platforms. Tested on both asymmetric (`q8_0-K + turbo3-V`) and symmetric (`turbo3/turbo3`) paths. On the tested M2 Pro setup (Qwen2.5-1.5B, `q8_0-K + turbo3-V`), block_size=128 also improved decode by 3–7%; this gain was not observed on M5 Max. Earlier turbo3 figures (4.6x) reflect the block_size=32 default. CUDA not yet validated. See [block size study](docs/papers/block-size-experiment.md).
 
 > **Important: choosing the right config for your model.** TurboQuant quality depends on your base weight quantization. Models with Q8_0+ weights work well with symmetric turbo (e.g., `-ctk turbo3 -ctv turbo3`). Some low-bit models with Q4_K_M weights may benefit from asymmetric K/V: use `-ctk q8_0 -ctv turbo4` to keep K precision high while compressing V (tested on Qwen2.5-7B Q4_K_M). K precision is the dominant quality factor because it controls attention routing via softmax. Note: not all Q4_K_M models are sensitive to this — Mistral-24B Q4_K_M works fine with symmetric turbo. Validate on your specific model. See **[Configuration Recommendations](docs/turboquant-recommendations.md)** for the full tested matrix and practical guidance.
 >
@@ -354,7 +356,7 @@ The fork modifies these files from upstream llama.cpp:
 
 | Flag | Bits/val | Compression vs fp16 | Description |
 |------|----------|--------------------:|-------------|
-| `turbo3` | 3.5 | **4.6x** | 3-bit PolarQuant + WHT rotation. Best compression, q8_0 speed. |
+| `turbo3` | 3.5† | **4.6x**† | 3-bit PolarQuant + WHT rotation. Best compression, q8_0 speed. |
 | `turbo4` | 4.25 | **3.8x** | 4-bit PolarQuant (16 centroids). Best quality. |
 | `q8_0` | 8 | 2.0x | llama.cpp default quantized cache. |
 | `q4_0` | 4 | 4.0x | llama.cpp 4-bit cache. |

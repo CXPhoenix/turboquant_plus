@@ -206,6 +206,19 @@ Start conservative and validate:
 llama-server -m model.gguf -ctk q8_0 -ctv turbo4 -fa 1
 ```
 
+## Block Size
+
+The default storage block size for turbo3 and turbo2 is 32 elements. Testing with block_size=128 shows identical PPL while improving turbo3 compression from 4.57x to 5.12x.
+
+- **turbo3 (asymmetric q8_0-K + turbo3-V):** Validated across 3 architectures (dense, dense Qwen, hybrid MoE), 3 context lengths (512, 8K, 32K), and 2 hardware platforms (M5 Max, M2 Pro). Zero PPL regression, no speed regression on M5.
+- **turbo3 (symmetric turbo3-K + turbo3-V):** Validated on phi-4 dense and Qwen3.5-35B MoE (M5 Max, 512 context). PPL identical at block 32 vs 128.
+- **turbo2 (asymmetric q8_0-K + turbo2-V):** Validated on phi-4 Q8_0 (M5) and Qwen2.5-7B Q4_K_M (M5 + M2). PPL identical at block 32 vs 128.
+- **NIAH:** 3/3 pass at block_size=128 (phi-4, symmetric turbo3, 4K context). Block128-only run, not strict A/B.
+
+Additionally, on the tested M2 Pro setup (Qwen2.5-1.5B, `q8_0-K + turbo3-V`), block_size=128 improved decode speed by 3-7% across 512 to 16K context. This gain was not observed on M5 Max and may be specific to bandwidth-constrained Apple Silicon. Single-model result; may not generalize.
+
+Community retesting is encouraged on CUDA / non-Apple backends and additional model families once the updated default lands. See [block size study](papers/block-size-experiment.md) for the full data.
+
 ## Notes and Caveats
 
 - **Backend scope:** All validation in this document was performed on Metal (Apple Silicon). CUDA ports exist via community forks (spiritbuun, signalnine) but asymmetric q8_0 × turbo has not been independently validated on CUDA.
