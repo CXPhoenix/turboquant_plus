@@ -145,7 +145,7 @@ Long context PPL (wikitext-2-raw):
 | q8_0 | q8_0 | 48K | 3.575 |
 | turbo3 | turbo3 | 48K | 4.019 |
 
-NIAH: 30/30 perfect (turbo3 = q8_0, 5 depths x 3 context lengths). See [70B stress test](papers/70b-m5-max-stress-test.md).
+NIAH: 30/30 perfect (turbo3 = q8_0, 5 depths x 3 context lengths). See [70B stress test](papers/m5-max-stress-test.md).
 
 #### Qwen3.5-35B-A3B MoE (Q8_0 weights) — healthy
 
@@ -290,5 +290,5 @@ See [block size study](papers/block-size-experiment.md) for the full data.
 - **Model sensitivity varies:** Qwen2.5 is consistently sensitive to symmetric turbo on Q4_K_M. Llama, Mistral, and Qwen3.5 tolerate it. Test before deploying on new model families.
 - **turbo2 as V cache:** turbo2-V with Boundary V auto-enabled gives +5-9.5% PPL depending on model. Boundary V recovers 37-91% of the quality gap.
 - **PPL is measured at 512 context with 4 chunks unless noted.** Long-context PPL validated up to 48K on Llama-70B.
-- **70B at 48K context:** Confirmed on M5 Max 128GB. turbo3 prefill is 7.4% faster than q8_0 at 32K. Hard wall at ~49K context due to Metal compute buffer limitation (not TurboQuant-specific). See [70B stress test](papers/70b-m5-max-stress-test.md).
+- **70B at 48K context:** Confirmed on M5 Max 128GB. turbo3 prefill is 7.4% faster than q8_0 at 32K. Hard wall at ~49K context due to Metal compute buffer limitation (not TurboQuant-specific). See [70B stress test](papers/m5-max-stress-test.md).
 - **Community:** 30+ testers across M1/M2/M3/M5 Mac, RTX 3080 Ti/3090/4090/5090, DGX Spark Blackwell, AMD RX 9070 XT.

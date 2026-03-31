@@ -1,4 +1,4 @@
-# TurboQuant KV Cache Compression on Llama-3.1-70B: M5 Max Stress Test
+# TurboQuant M5 Max 128GB Stress Test — Large Model Validation
 
 **Tom Turney**
 Independent Researcher
