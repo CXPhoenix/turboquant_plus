@@ -18,11 +18,11 @@ These configurations produce healthy PPL in current testing:
 | Q8_0 weights, any size | `-ctk turbo3 -ctv turbo3` | phi-4 +4.2%, 35B MoE +1.1% |
 | Q8_0 weights, any size | `-ctk q8_0 -ctv turbo4` | phi-4 +0.3% |
 | Q8_0 weights, any size | `-ctk q8_0 -ctv turbo3` | phi-4 +1.1% |
-| Q4_K_M, larger models (24B+) | `-ctk turbo3 -ctv turbo3` | Mistral-24B PPL 4.99, Llama-70B PPL 3.629 (+11.4%) |
-| Q4_K_M, larger models (70B) | `-ctk turbo4 -ctv turbo4` | Llama-70B PPL 3.461 (+6.3%) |
+| Q4_K_M, larger models (24B+) | `-ctk turbo3 -ctv turbo3` | Mistral-24B PPL 4.99, Llama-70B +11.4%, Command-R+ 104B +3.6% |
+| Q4_K_M, larger models (70B+) | `-ctk turbo4 -ctv turbo4` | Llama-70B +6.3%, Command-R+ 104B +1.9% |
 | Q4_K_M, tested sensitive models | `-ctk q8_0 -ctv turbo4` | Qwen2.5-7B +1.0% (Metal, CUDA, AMD all confirmed) |
 | Q4_K_M, tested sensitive models | `-ctk q8_0 -ctv turbo3` | Qwen2.5-7B +2.0% |
-| Q4_K_M, 70B | `-ctk q8_0 -ctv turbo2` | Llama-70B +9.5% (asymmetric rescue) |
+| Q4_K_M, 70B+ | `-ctk q8_0 -ctv turbo2` | Llama-70B +9.5%, Command-R+ 104B +7.9% (asymmetric rescue) |
 
 ## Validated Risky
 
@@ -34,7 +34,7 @@ These configurations produce catastrophic PPL in at least one tested model:
 | Q4_K_M, Qwen2.5-7B | `-ctk turbo3 -ctv turbo3` | PPL 3556 |
 | Q4_K_M, Qwen2.5-1.5B | `-ctk turbo3 -ctv turbo3` | PPL 8641+ on both M5 and M2 |
 
-Note: symmetric turbo on Q4_K_M is not universally broken. Mistral-24B and Llama-70B Q4_K_M handle it fine. Model family and size both matter. Qwen2.5 is consistently sensitive; Llama and Mistral are tolerant.
+Note: symmetric turbo on Q4_K_M is not universally broken. Mistral-24B, Llama-70B, and Command-R+ 104B Q4_K_M all handle it fine. Model family and size both matter. Qwen2.5 is consistently sensitive; Llama, Mistral, and Cohere are tolerant. Bigger models absorb quantization stacking better (104B turbo3 = +3.6% vs 70B turbo3 = +11.4%).
 
 ## Experimental
 
@@ -71,7 +71,7 @@ See [Layer-Aware V Compression](papers/layer-aware-v-compression.md) for the ful
 | Q8_0+ weights, need more compression | `-ctk turbo3 -ctv turbo3` | +4% PPL, 5.12x compression |
 | Q4_K_M, unknown model | `-ctk q8_0 -ctv turbo4` | Safe default, V still compressed |
 | Q4_K_M, validated large model (24B+) | `-ctk turbo3 -ctv turbo3` | If you've confirmed PPL is healthy |
-| Q4_K_M, 70B | `-ctk turbo4 -ctv turbo4` | +6.3% PPL, symmetric works on Llama-70B |
+| Q4_K_M, 70B+ | `-ctk turbo4 -ctv turbo4` | +6.3% on 70B, +1.9% on 104B. Symmetric works on large Llama/Cohere |
 | Maximum V compression | `-ctk q8_0 -ctv turbo2` | +5-9.5% PPL, Boundary V auto-enabled |
 
 **Important framing:** Asymmetric q8_0-K + turbo-V is a **quality/robustness rescue**, not a speed optimization. You trade some decode throughput (K is uncompressed) for quality safety on sensitive models. If your model works fine with symmetric turbo, use symmetric.
@@ -146,6 +146,35 @@ Long context PPL (wikitext-2-raw):
 | turbo3 | turbo3 | 48K | 4.019 |
 
 NIAH: 30/30 perfect (turbo3 = q8_0, 5 depths x 3 context lengths). See [70B stress test](papers/m5-max-stress-test.md).
+
+#### Command-R+ 104B (Q4_K_M weights, M5 Max 128GB) — tolerates symmetric turbo, 128K validated
+
+| K | V | PPL | vs q8_0 | Status |
+|---|---|-----|---------|--------|
+| q8_0 | q8_0 | 6.192 | baseline | healthy |
+| q8_0 | turbo4 | 6.211 | +0.3% | healthy |
+| q8_0 | turbo3 | 6.296 | +1.7% | healthy |
+| q8_0 | turbo2 | 6.678 | +7.9% | healthy |
+| turbo4 | turbo4 | 6.312 | +1.9% | healthy |
+| turbo3 | turbo3 | 6.415 | +3.6% | healthy |
+| turbo2 | turbo2 | 7.049 | +13.8% | usable |
+
+Largest model tested. 104B tolerates symmetric turbo better than 70B (bigger models = more headroom). turbo3 prefill faster than q8_0 at 32K (64.5 vs 62.3 t/s).
+
+Long context PPL (turbo3/turbo3, wikitext-2-raw):
+
+| Context | PPL | Pass time |
+|---------|-----|-----------|
+| 48K | 3.672 | 931s |
+| 64K | 4.321 | 1481s |
+| 96K | 4.170 | 2966s |
+| 128K | 4.024 | 4996s |
+
+**128K full native context achieved** with Metal settings `iogpu.wired_limit_mb=122880` + `GGML_METAL_NO_RESIDENCY=1`. Peak memory 74 GB of 128 GB.
+
+NIAH: 10/10 perfect at 4K and 8K (turbo3). 16K timed out due to slow decode on 104B, not retrieval failure.
+
+See [M5 Max stress test](papers/m5-max-stress-test.md).
 
 #### Qwen3.5-35B-A3B MoE (Q8_0 weights) — healthy
 
@@ -252,7 +281,7 @@ llama-server -m model-Q4_K_M.gguf -ctk q8_0 -ctv turbo2 -fa 1
 
 ### Low-bit base weights (Q4_K_M) on larger or less sensitive models
 
-Symmetric turbo3 works on Mistral-24B Q4_K_M (PPL 4.99) and Llama-70B Q4_K_M (PPL 3.629). Validate on your specific model:
+Symmetric turbo3 works on Mistral-24B Q4_K_M (PPL 4.99), Llama-70B Q4_K_M (PPL 3.629), and Command-R+ 104B Q4_K_M (PPL 6.415). Validate on your specific model:
 
 ```bash
 # Try symmetric first on large Q4_K_M models
@@ -289,6 +318,7 @@ See [block size study](papers/block-size-experiment.md) for the full data.
 - **Multi-backend:** Metal, CUDA, and HIP all validated. Asymmetric q8_0-K + turbo4-V confirmed across all three GPU vendors on Qwen2.5-7B Q4_K_M.
 - **Model sensitivity varies:** Qwen2.5 is consistently sensitive to symmetric turbo on Q4_K_M. Llama, Mistral, and Qwen3.5 tolerate it. Test before deploying on new model families.
 - **turbo2 as V cache:** turbo2-V with Boundary V auto-enabled gives +5-9.5% PPL depending on model. Boundary V recovers 37-91% of the quality gap.
-- **PPL is measured at 512 context with 4 chunks unless noted.** Long-context PPL validated up to 48K on Llama-70B.
-- **70B at 48K context:** Confirmed on M5 Max 128GB. turbo3 prefill is 7.4% faster than q8_0 at 32K. Hard wall at ~49K context due to Metal compute buffer limitation (not TurboQuant-specific). See [70B stress test](papers/m5-max-stress-test.md).
+- **PPL is measured at 512 context with 4 chunks unless noted.** Long-context PPL validated up to 128K on Command-R+ 104B.
+- **104B at 128K context:** Confirmed on M5 Max 128GB with Command-R+ Q4_K_M. turbo3/turbo3 PPL 4.024. Requires Metal settings: `iogpu.wired_limit_mb=122880` + `GGML_METAL_NO_RESIDENCY=1`. Without these, Metal hangs at ~49K context on 70B+ models. See [M5 Max stress test](papers/m5-max-stress-test.md).
+- **turbo3 prefill faster than q8_0 at 32K:** Confirmed on both 70B (+7.4%) and 104B (+3.5%). Smaller KV cache reduces memory bandwidth during attention.
 - **Community:** 30+ testers across M1/M2/M3/M5 Mac, RTX 3080 Ti/3090/4090/5090, DGX Spark Blackwell, AMD RX 9070 XT.

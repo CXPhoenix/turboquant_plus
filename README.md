@@ -14,7 +14,7 @@ Compresses transformer KV cache **3.8–6.4x** using PolarQuant + Walsh-Hadamard
 
 **Not TurboQuant-specific** — Sparse V was validated across q8_0, q4_0, and turbo3 KV formats.
 
-Validated end-to-end on Qwen 3.5 35B-A3B (MoE) on M5 Max via llama.cpp Metal.
+Validated end-to-end from 1.5B to **104B** on M5 Max via llama.cpp Metal. **104B at 128K context on a MacBook** with turbo3 (PPL 4.024, 74 GB peak memory).
 
 ## Status: v1 Complete, Speed Optimized, Community-Tested
 
@@ -27,8 +27,9 @@ Validated end-to-end on Qwen 3.5 35B-A3B (MoE) on M5 Max via llama.cpp Metal.
 - **4-mag LUT**: auto-detected on M1/M2/M3/M4, +38-45% decode at long context
 - **Layer-adaptive mode 2**: q8_0 quality at 3.5x compression (last 8 layers at q8_0)
 - **Temporal decay**: 30-34% memory savings at long context (experiment branch)
-- **NIAH retrieval**: 9/9 single needle with sparse V (vs 7/9 baseline), 100% multi-key through 32K
+- **NIAH retrieval**: 9/9 single needle with sparse V (vs 7/9 baseline), 100% multi-key through 32K. 30/30 on Llama-70B, 10/10 on Command-R+ 104B
 - **14 decode approaches tested** on M2 Pro — comprehensive hardware analysis
+- **Stress tested up to 104B**: Command-R+ 104B Q4_K_M at 128K context (PPL 4.024). Llama-70B Q4_K_M at 48K (PPL 4.019). turbo3 prefill faster than q8_0 at 32K on both models
 - Community: 30+ testers across M1/M2/M3/M5 Mac, RTX 3080 Ti/3090/4090/5090, AMD 6800 XT/9070 XT
 - Rotation Gaussianization validated on real Qwen3 KV tensors (kurtosis 900 → 2.9)
 
@@ -51,7 +52,7 @@ turbo4 (4-bit PolarQuant) has the best quality after q8_0 — closer to q8_0 tha
 
 > †turbo3 at default block_size=32. At block_size=128, turbo3 achieves 3.125 bits/val and 5.12x compression with identical PPL, validated on Metal across 3 model architectures, 3 context lengths (512–32K), and 2 Apple Silicon platforms. Tested on both asymmetric (`q8_0-K + turbo3-V`) and symmetric (`turbo3/turbo3`) paths. On the tested M2 Pro setup (Qwen2.5-1.5B, `q8_0-K + turbo3-V`), block_size=128 also improved decode by 3–7%; this gain was not observed on M5 Max. Earlier turbo3 figures (4.6x) reflect the block_size=32 default. CUDA not yet validated. See [block size study](docs/papers/block-size-experiment.md).
 
-> **Important: choosing the right config for your model.** TurboQuant quality depends on your base weight quantization. Models with Q8_0+ weights work well with symmetric turbo (e.g., `-ctk turbo3 -ctv turbo3`). Some low-bit models with Q4_K_M weights may benefit from asymmetric K/V: use `-ctk q8_0 -ctv turbo4` to keep K precision high while compressing V (tested on Qwen2.5-7B Q4_K_M). K precision is the dominant quality factor because it controls attention routing via softmax. Note: not all Q4_K_M models are sensitive to this — Mistral-24B Q4_K_M works fine with symmetric turbo. Validate on your specific model. See **[Configuration Recommendations](docs/turboquant-recommendations.md)** for the full tested matrix and practical guidance.
+> **Important: choosing the right config for your model.** TurboQuant quality depends on your base weight quantization. Models with Q8_0+ weights work well with symmetric turbo (e.g., `-ctk turbo3 -ctv turbo3`). Some low-bit models with Q4_K_M weights may benefit from asymmetric K/V: use `-ctk q8_0 -ctv turbo4` to keep K precision high while compressing V (tested on Qwen2.5-7B Q4_K_M). K precision is the dominant quality factor because it controls attention routing via softmax. Note: not all Q4_K_M models are sensitive — Mistral-24B, Llama-70B, and Command-R+ 104B all handle symmetric turbo fine. Bigger models absorb quantization stacking better (104B: +3.6% vs 70B: +11.4% for turbo3). Validate on your specific model. See **[Configuration Recommendations](docs/turboquant-recommendations.md)** for the full tested matrix and practical guidance.
 >
 > Validated on Metal (Apple Silicon). CUDA mixed q8_0 × turbo parity is not yet verified.
 
@@ -130,6 +131,21 @@ turbo4 decode is faster than turbo3 due to simpler nibble packing and direct-ext
 | Single needle (33 positions) | 30/33 (90.9%) | **31/33 (93.9%)** | 9/9 (3-pos) |
 
 turbo4 beats q8_0 on retrieval (31/33 vs 30/33). Shared failure at 8K/100% is a model weakness, not quantization. See [turbo4 resurrection](docs/papers/turbo4-resurrection.md) for the full investigation.
+
+### Large Model Stress Tests (M5 Max 128GB)
+
+| Model | Params | Weights | Config | PPL | vs q8_0 | Max Context | NIAH |
+|-------|--------|---------|--------|-----|---------|-------------|------|
+| Llama-3.1-70B | 70B | Q4_K_M | turbo4/turbo4 | 3.461 | +6.3% | 48K | 30/30 |
+| Llama-3.1-70B | 70B | Q4_K_M | turbo3/turbo3 | 3.629 | +11.4% | 48K | 30/30 |
+| **Command-R+ 104B** | **104B** | **Q4_K_M** | **turbo4/turbo4** | **6.312** | **+1.9%** | **128K** | **10/10** |
+| **Command-R+ 104B** | **104B** | **Q4_K_M** | **turbo3/turbo3** | **6.415** | **+3.6%** | **128K** | **10/10** |
+
+turbo3 prefill is faster than q8_0 at 32K on both models (70B: 80.8 vs 75.2 t/s, 104B: 64.5 vs 62.3 t/s). Smaller KV cache = less memory bandwidth during attention.
+
+104B at 128K requires Metal settings: `sudo sysctl iogpu.wired_limit_mb=122880` + `GGML_METAL_NO_RESIDENCY=1`. Without these, Metal stalls at ~49K context on 70B+ models.
+
+See [M5 Max stress test](docs/papers/m5-max-stress-test.md) for the full data.
 
 ### KL Divergence vs f16
 

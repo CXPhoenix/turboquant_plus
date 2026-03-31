@@ -215,7 +215,18 @@ The Q4_K_M symmetric turbo sensitivity appears to be model-family-dependent, not
 
 ---
 
-## 8. Limitations
+## 8. Upcoming: Command-R+ 104B Q4_K_M
+
+Testing in progress. Command-R+ 104B (~60GB weights) will be run with two Metal configuration changes that the 70B test did NOT have:
+
+1. `sudo sysctl iogpu.wired_limit_mb=122880` (increase GPU memory cap from default ~96GB to 120GB)
+2. `GGML_METAL_NO_RESIDENCY=1` (disable Metal residency sets, suspected cause of 50K+ hang)
+
+These changes allow a direct comparison: if the 104B test pushes past the 49K context wall that blocked the 70B test, the residency set fix is validated. Results will be added to this document.
+
+---
+
+## 9. Limitations
 
 1. **Single model tested.** These results are for Llama-3.1-70B-Instruct Q4_K_M only. Other 70B models (Qwen-72B, DeepSeek-67B) may behave differently.
 
